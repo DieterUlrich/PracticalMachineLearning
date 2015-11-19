@@ -1,0 +1,127 @@
+---
+title: "Practical Machine Learning Course Project"
+author: "D. Ulrich"
+output: html_document
+---
+##Synopsis
+
+The training and test data are taken from the following study:
+Velloso, E.; Bulling, A.; Gellersen, H.; Ugulino, W.; Fuks, H. Qualitative Activity Recognition of Weight Lifting Exercises. Proceedings of 4th International Conference in Cooperation with SIGCHI (Augmented Human '13) . Stuttgart, Germany: ACM SIGCHI, 2013.
+
+The goal of this project is to predict the manner in which they did the exercise.
+The description should adress the following questions:
+
+-how the model was built.
+
+-how cross validation was used.
+
+-what the expected out of sample error is.
+
+-what choices were done.
+
+At the beginning the packages needed to produce the results are loaded.
+
+```{r}
+library(caret,quietly=TRUE)
+library(AppliedPredictiveModeling,quietly=TRUE)
+library(rpart.plot,quietly=TRUE)
+library(randomForest,quietly=TRUE)
+```
+
+#Question
+
+In the study, six participants participated in a dumbell lifting exercise five different ways. The five ways, as described in the study, were "exactly according to the specification (Class A), throwing the elbows to the front (Class B), lifting the dumbbell only halfway (Class C), lowering the dumbbell only halfway (Class D) and throwing the hips to the front (Class E). Class A corresponds to the specified execution of the exercise, while the other 4 classes correspond to common mistakes."
+
+By processing data gathered from accelerometers on the belt, forearm, arm, and dumbell of the participants in a machine learning algorithm, the question is can the appropriate activity quality (class A-E) be predicted?
+
+#Input data
+
+In a next step the data are loaded:
+
+```{r}
+file_train <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+file_test <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+#download.file(url=file_train, destfile=pml-training.csv, method="curl")
+#download.file(url=file_test, destfile=pml-testing.csv, method="curl")
+
+train <- read.table('pml-training.csv', na.strings=c("NA",""), header = TRUE, sep = ',')
+test <- read.table('pml-testing.csv', na.strings=c("NA",""), header = TRUE, sep = ',')
+
+colnames_train <- colnames(train)
+colnames_test <- colnames(test)
+```
+
+#Features
+Next I decided to eliminate columns with NA and other nonnumerical columns that are useless for prediction.
+
+```{r}
+# Count the number of non-NAs in each col.
+nonNAs <- function(x) {
+  as.vector(apply(x, 2, function(x) length(which(!is.na(x)))))
+}
+# Build vector of missing data or NA columns to drop.
+colcnts <- nonNAs(train)
+drops <- c()
+for (cnt in 1:length(colcnts)) {
+  if (colcnts[cnt] < nrow(train)) {
+    drops <- c(drops, colnames_train[cnt])
+  }
+}
+# Drop NA data and the first 7 columns as they're unnecessary for predicting.
+train <- train[,!(names(train) %in% drops)]
+train <- train[,8:length(colnames(train))]
+
+test <- test[,!(names(test) %in% drops)]
+test <- test[,8:length(colnames(test))]
+```
+In a further step I make sure there are no variables with near zero variabillity.
+
+```{r}
+nsv <- nearZeroVar(train, saveMetrics=TRUE)
+nsv
+```
+We can see that all of the near zero variance variables (nsv) are FALSE, so there is no need to eliminate any covariates due to lack of variablility.
+
+#Algorithm
+For the analysis I spilted the data in a training (60%) and a test set (40%).
+```{r}
+inTrain <- createDataPartition(y=train$classe, p=0.6, list=FALSE)
+training <- train[inTrain,]
+testing <- train[-inTrain,]
+```
+Based on the assumption that we have an nonlinar relationship between the variables and on the concensus in the coursera discussion forums, I chose two different algorithms from the caret package: classification trees (method = rpart) and random forests (method = rf).
+
+#Evaluation
+
+I tried the classification tree first. Together with crossvalidation and preprocessing.
+```{r}
+set.seed(888)
+modFit <- train(training$classe ~ .,  preProcess=c("center", "scale"), trControl=trainControl(method = "cv", number = 4), data = training, method="rpart")
+print(modFit, digits=3)
+```
+
+Run the model with the test set.
+```{r}
+predictions <- predict(modFit, newdata=testing)
+print(confusionMatrix(predictions, testing$classe), digits=4)
+```
+The accuracy rate is with 0.49 to low for a serious prediction. So I tried the random forests also with crossvalidation and preprocessing.
+
+```{r}
+set.seed(888)
+modFit <- train(training$classe ~ .,  preProcess=c("center", "scale"), trControl=trainControl(method = "cv", number = 4), data = training, method="rf")
+print(modFit, digits=3)
+```
+Run the new model with the test set.
+```{r}
+predictions <- predict(modFit, newdata=testing)
+print(confusionMatrix(predictions, testing$classe), digits=4)
+```
+With this model we get a accuracy rate of 0.9908. So the out of sample error is: 1-0.9908=0.0092.
+
+#Conclusion
+With an accuracy rate of 0.9908 the random forrests model with preprocessing an crossvalidation seems accurate for calculating the values of the 20 testing set, which are asked in the second part of the course project.
+```{r}
+print(predict(modFit, newdata=test))
+```
+
